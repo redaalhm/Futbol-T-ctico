@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pizarra">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Pizarra Táctica Fútbol 11</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<style>
+  :root{--bg:#0f1115;--bar:#181b22;--btn:#252a35;--on:#22c55e;--tx:#e8eaf0}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font-family:system-ui,sans-serif;overscroll-behavior:none}
+  #app{position:fixed;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  /* Barra superior con scroll horizontal continuo */
+  #bar{display:flex;gap:6px;align-items:center;padding:8px;background:var(--bar);overflow-x:auto;white-space:nowrap;flex:none;touch-action:pan-x;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  #bar::-webkit-scrollbar{display:none}
+  button{flex:none;background:var(--btn);color:var(--tx);border:2px solid transparent;border-radius:10px;padding:9px 12px;font-size:15px;touch-action:manipulation}
+  button.on{border-color:var(--on);background:#143323}
+  .sep{flex:none;width:1px;height:26px;background:#3a4050;margin:0 4px}
+  .col{width:34px;height:34px;padding:0;border-radius:50%;border:3px solid #0008}
+  .col.on{border-color:#fff;transform:scale(1.15)}
+  #wrap{flex:1;min-height:0;position:relative}
+  canvas{position:absolute;top:0;left:0;width:100%;height:100%;touch-action:none;display:block}
+  @media (max-height:500px){#bar{padding:4px 6px}button{padding:6px 10px}.col{width:28px;height:28px}}
+  #modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#000b;z-index:20;align-items:center;justify-content:center;padding:max(10px,env(safe-area-inset-top)) 10px 10px}
+  #panel{background:var(--bar);border-radius:14px;width:100%;max-width:760px;max-height:100%;display:flex;flex-direction:column;overflow:hidden}
+  #ph{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:10px;border-bottom:1px solid #333a48}
+  #ph h2{margin:0 auto 0 4px;font-size:18px}
+  #tlist{overflow-y:auto;padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+  .card{background:var(--btn);border-radius:12px;padding:8px;border:2px solid transparent}
+  .card.cur{border-color:var(--on)}
+  .card img{width:100%;border-radius:8px;display:block;background:#1b5e20;aspect-ratio:1130/760}
+  .nm{font-weight:600;margin:6px 2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dt{font-size:12px;opacity:.6;margin:0 2px 6px}
+  .ac{display:flex;gap:6px}.ac button{padding:7px 10px;font-size:14px}.ac button:first-child{flex:1;background:#14532d}
+  .empty{opacity:.7;grid-column:1/-1;text-align:center;padding:30px 10px}
+  #tst{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111c;color:#fff;padding:10px 16px;border-radius:20px;opacity:0;transition:opacity .25s;z-index:30;pointer-events:none;font-size:15px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="bar">
+    <button id="btnLib">📁 Tácticas</button>
+    <button id="btnSave">💾 Guardar</button>
+    <span class="sep"></span>
+    <button data-tool="move" class="on">✋ Mover</button>
+    <button data-tool="line">╱ Recta</button>
+    <button data-tool="free">✏️ Curva</button>
+    <button data-tool="erase">🧽 Borrar</button>
+    <span class="sep"></span>
+    <button id="addP">👕 Jugador</button>
+    <button id="addG">🧤 Portero</button>
+    <button id="addC">🔺 Cono</button>
+    <button id="addB">⚽ Balón</button>
+    <button id="addT">🅣 Texto</button>
+    <span class="sep"></span>
+    <span id="pal" style="display:flex;gap:8px"></span>
+    <span class="sep"></span>
+    <button id="dash">━ Continua</button>
+    <button id="undo">↶ Deshacer</button>
+    <button id="clear">🗑 Limpiar</button>
+    <span class="sep"></span>
+    <button id="zo">−</button>
+    <button id="zi">+</button>
+    <button id="fit">⤢</button>
+  </div>
+  <div id="wrap"><canvas id="cv"></canvas></div>
+</div>
+
+<div id="modal"><div id="panel">
+  <div id="ph"><h2>📁 Mis tácticas</h2>
+    <button id="mNew">＋ Nueva</button><button id="mAs">💾 Guardar como…</button><button id="mPng">🖼 PNG</button>
+    <button id="mImp">⬆ Importar</button><button id="mExp">⬇ Copia</button><button id="mX">✕</button>
+    <input type="file" id="mFile" accept=".json,application/json" style="display:none"></div>
+  <div id="tlist"></div></div></div>
+<div id="tst"></div>
+<script>
+window.onerror=function(m,u,l){var d=document.createElement('div');d.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#b91c1c;color:#fff;padding:8px;font:13px sans-serif;z-index:9';d.textContent='Error: '+m+' (línea '+l+')';document.body.appendChild(d)};
+/* ===== Pizarra táctica F11 — Vanilla JS + Canvas ===== */
+const cv = document.getElementById('cv'); let ctx = cv.getContext('2d');
+const W = 1130, H = 760;                 // tamaño del "mundo" (campo 105x68 m a 10 u/m + margen)
+const PX0 = 40, PY0 = 40, PW = 1050, PH = 680;
+const COLORS = {Azul:'#2563eb',Rojo:'#dc2626',Verde:'#16a34a',Amarillo:'#facc15',Blanco:'#f8fafc',Naranja:'#f97316'};
+const GK_COLOR = '#a855f7';
+
+// Estado
+let items = [], strokes = [];            // elementos y trazos
+let tool = 'move', dashed = false, curColor = COLORS.Azul;
+let selected = null, cam = {x:0,y:0,z:1}, dpr = 1, cw = 0, ch = 0;
+
+/* ---------- Cámara ---------- */
+const toW = p => ({x:(p.x-cam.x)/cam.z, y:(p.y-cam.y)/cam.z});
+function fit(){ cam.z = Math.min(cw/W, ch/H); cam.x = (cw-W*cam.z)/2; cam.y = (ch-H*cam.z)/2; draw(); }
+function zoom(f, cx=cw/2, cy=ch/2){
+  const nz = Math.max(.3, Math.min(5, cam.z*f)), k = nz/cam.z;
+  cam.x = cx-(cx-cam.x)*k; cam.y = cy-(cy-cam.y)*k; cam.z = nz; draw();
+}
+function resize(){                      // también cubre el giro a horizontal
+  const r = cv.parentElement.getBoundingClientRect();
+  dpr = window.devicePixelRatio||1; cw = r.width; ch = r.height;
+  cv.width = cw*dpr; cv.height = ch*dpr; fit();
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', ()=>setTimeout(resize,200));
+
+/* ---------- Dibujo del campo ---------- */
+function drawPitch(){
+  const c = ctx;
+  c.fillStyle = '#1b5e20'; c.fillRect(0,0,W,H);
+  const n = 14, sw = PW/n;
+  for(let i=0;i<n;i++){ c.fillStyle = i%2 ? '#2e7d32' : '#388e3c'; c.fillRect(PX0+i*sw,PY0,sw,PH); }
+  c.strokeStyle = '#fff'; c.lineWidth = 3; c.fillStyle = '#fff';
+  const my = PY0+PH/2, mx = PX0+PW/2;
+  c.strokeRect(PX0,PY0,PW,PH);
+  c.beginPath(); c.moveTo(mx,PY0); c.lineTo(mx,PY0+PH); c.stroke();
+  c.beginPath(); c.arc(mx,my,91.5,0,7); c.stroke();
+  c.beginPath(); c.arc(mx,my,4,0,7); c.fill();
+  for(const s of [0,1]){                // 0 = izquierda, 1 = derecha
+    const d = s?-1:1, x0 = s?PX0+PW:PX0;
+    c.strokeRect(s?x0-165:x0, my-201.6, 165, 403.2);         // área grande
+    c.strokeRect(s?x0-55:x0, my-91.6, 55, 183.2);            // área pequeña
+    c.strokeRect(s?x0:x0-20, my-36.6, 20, 73.2);             // portería
+    c.beginPath(); c.arc(x0+d*110,my,4,0,7); c.fill();       // punto de penalti
+    const a = 0.926; c.beginPath();                          // semicírculo del área
+    c.arc(x0+d*110,my,91.5, s?Math.PI-a:-a, s?Math.PI+a:a); c.stroke();
+  }
+  // córners
+  [[PX0,PY0,0],[PX0+PW,PY0,.5],[PX0+PW,PY0+PH,1],[PX0,PY0+PH,1.5]].forEach(([x,y,q])=>{
+    c.beginPath(); c.arc(x,y,10,q*Math.PI,(q+.5)*Math.PI); c.stroke();
+  });
+}
+
+/* ---------- Dibujo de elementos y trazos ---------- */
+const darkTxt = col => col===COLORS.Amarillo||col===COLORS.Blanco;
+function drawItem(it){
+  const c = ctx; c.save(); c.translate(it.x,it.y);
+  c.textAlign='center'; c.textBaseline='middle';
+  if(it.t==='p'||it.t==='g'){
+    c.shadowColor='#0007'; c.shadowBlur=6;
+    c.beginPath(); c.arc(0,0,20,0,7); c.fillStyle=it.col; c.fill();
+    c.shadowBlur=0; c.lineWidth=3; c.strokeStyle='#fff'; c.stroke();
+    c.fillStyle = darkTxt(it.col)?'#111':'#fff';
+    c.font = it.t==='g' ? 'bold 13px sans-serif' : 'bold 20px sans-serif';
+    c.fillText(it.txt,0,1);
+  } else if(it.t==='c'){
+    c.beginPath(); c.moveTo(0,-16); c.lineTo(14,13); c.lineTo(-14,13); c.closePath();
+    c.fillStyle='#f97316'; c.fill(); c.lineWidth=2; c.strokeStyle='#fff'; c.stroke();
+  } else if(it.t==='b'){
+    c.beginPath(); c.arc(0,0,11,0,7); c.fillStyle='#fff'; c.fill();
+    c.lineWidth=2; c.strokeStyle='#111'; c.stroke();
+    c.beginPath(); c.arc(0,0,4,0,7); c.fillStyle='#111'; c.fill();
+  } else if(it.t==='t'){
+    c.font='bold 20px sans-serif'; const w = c.measureText(it.txt).width/2+8;
+    c.fillStyle='#000a'; c.fillRect(-w,-15,w*2,30);
+    c.fillStyle='#fff'; c.fillText(it.txt,0,1);
+  }
+  if(it===selected){ c.beginPath(); c.arc(0,0,27,0,7); c.lineWidth=3; c.strokeStyle='#38bdf8'; c.setLineDash([6,5]); c.stroke(); }
+  c.restore();
+}
+function drawStroke(s){
+  const c = ctx, p = s.pts; if(p.length<2) return;
+  c.save(); c.strokeStyle=c.fillStyle='#fff'; c.lineWidth=4; c.lineCap=c.lineJoin='round';
+  c.shadowColor='#0008'; c.shadowBlur=4;
+  c.setLineDash(s.d?[14,11]:[]);
+  c.beginPath(); c.moveTo(p[0].x,p[0].y);
+  if(s.free && p.length>2){               // trazo curvo suavizado
+    for(let i=1;i<p.length-1;i++){ const m={x:(p[i].x+p[i+1].x)/2,y:(p[i].y+p[i+1].y)/2}; c.quadraticCurveTo(p[i].x,p[i].y,m.x,m.y); }
+    c.lineTo(p[p.length-1].x,p[p.length-1].y);
+  } else c.lineTo(p[p.length-1].x,p[p.length-1].y);
+  c.stroke();
+  // Punta de flecha: dirección a partir de un punto previo a ≥25 u del final
+  const e = p[p.length-1]; let r = p[0];
+  for(let i=p.length-2;i>=0;i--){ if(Math.hypot(e.x-p[i].x,e.y-p[i].y)>25){ r=p[i]; break; } }
+  const a = Math.atan2(e.y-r.y,e.x-r.x);
+  c.setLineDash([]); c.translate(e.x,e.y); c.rotate(a);
+  c.beginPath(); c.moveTo(4,0); c.lineTo(-16,-9); c.lineTo(-16,9); c.closePath(); c.fill();
+  c.restore();
+}
+function draw(){
+  ctx.setTransform(dpr*cam.z,0,0,dpr*cam.z,dpr*cam.x,dpr*cam.y);
+  ctx.fillStyle='#0f1115'; ctx.fillRect(-5000,-5000,10000,10000);
+  drawPitch(); strokes.forEach(drawStroke); if(cur) drawStroke(cur); items.forEach(drawItem);
+}
+
+/* ---------- Detección de toques (hit-test) ---------- */
+function segD(p,a,b){
+  const dx=b.x-a.x, dy=b.y-a.y, l=dx*dx+dy*dy;
+  let t = l ? ((p.x-a.x)*dx+(p.y-a.y)*dy)/l : 0; t=Math.max(0,Math.min(1,t));
+  return Math.hypot(p.x-a.x-t*dx,p.y-a.y-t*dy);
+}
+function hitItem(w){
+  for(let i=items.length-1;i>=0;i--){
+    const it=items[i], dx=Math.abs(w.x-it.x), dy=Math.abs(w.y-it.y);
+    if(it.t==='t'){ ctx.font='bold 20px sans-serif'; if(dx<ctx.measureText(it.txt).width/2+8 && dy<16) return it; }
+    else if(Math.hypot(dx,dy)<24) return it;
+  }
+  return null;
+}
+function hitStroke(w){
+  const tol = Math.max(10, 14/cam.z);
+  for(let i=strokes.length-1;i>=0;i--){
+    const p=strokes[i].pts; for(let j=1;j<p.length;j++) if(segD(w,p[j-1],p[j])<tol) return strokes[i];
+  }
+  return null;
+}
+function eraseAt(w){
+  const it=hitItem(w);
+  if(it){ items.splice(items.indexOf(it),1); if(selected===it) selected=null; draw(); return; }
+  const s=hitStroke(w); if(s){ strokes.splice(strokes.indexOf(s),1); draw(); }
+}
+
+/* ---------- Eventos de puntero (touch + ratón + lápiz) ---------- */
+let mode=null, dragIt=null, off={x:0,y:0}, panS=null, cur=null, lastTap={t:0,it:null};
+const pos = e => { const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; };
+
+cv.addEventListener('pointerdown', e=>{
+  e.preventDefault(); cv.setPointerCapture(e.pointerId);
+  const s=pos(e), w=toW(s);
+  if(tool==='erase'){ mode='erase'; eraseAt(w); return; }
+  if(tool==='line'||tool==='free'){
+    mode='draw'; cur={pts:[w,{...w}], d:dashed, free:tool==='free'}; draw(); return;
+  }
+  const it=hitItem(w);
+  if(it){
+    // doble toque → editar número / texto
+    const now=Date.now();
+    if(lastTap.it===it && now-lastTap.t<350 && (it.t==='p'||it.t==='g'||it.t==='t')){
+      const v=prompt(it.t==='t'?'Nuevo texto:':'Nuevo número / texto:', it.txt);
+      if(v!==null && v.trim()) it.txt=v.trim().slice(0,12);
+      lastTap={t:0,it:null}; selected=it; draw(); return;
+    }
+    lastTap={t:now,it};
+    selected=it; items.splice(items.indexOf(it),1); items.push(it);   // traer al frente
+    mode='drag'; dragIt=it; off={x:it.x-w.x,y:it.y-w.y};
+  } else { selected=null; mode='pan'; panS={x:s.x-cam.x,y:s.y-cam.y}; }  // arrastrar césped vacío = mover cámara
+  draw();
+});
+cv.addEventListener('pointermove', e=>{
+  if(!mode) return; e.preventDefault();
+  const s=pos(e), w=toW(s);
+  if(mode==='erase') eraseAt(w);
+  else if(mode==='draw'){
+    if(cur.free){ const l=cur.pts[cur.pts.length-1]; if(Math.hypot(w.x-l.x,w.y-l.y)>4/cam.z) cur.pts.push(w); }
+    else cur.pts[1]=w;
+    draw();
+  }
+  else if(mode==='drag'){ dragIt.x=w.x+off.x; dragIt.y=w.y+off.y; draw(); }
+  else if(mode==='pan'){ cam.x=s.x-panS.x; cam.y=s.y-panS.y; draw(); }
+});
+function end(e){
+  if(mode==='draw' && cur){
+    const p=cur.pts, l=p[p.length-1];
+    if(Math.hypot(l.x-p[0].x,l.y-p[0].y)>12) strokes.push(cur);        // descarta toques sin recorrido
+    cur=null;
+  }
+  mode=null; dragIt=null; draw();
+}
+cv.addEventListener('pointerup', end);
+cv.addEventListener('pointercancel', end);
+cv.addEventListener('wheel', e=>{ e.preventDefault(); const p=pos(e); zoom(e.deltaY<0?1.1:.9,p.x,p.y); },{passive:false});
+['gesturestart','gesturechange','dblclick','contextmenu'].forEach(n=>cv.addEventListener(n,e=>e.preventDefault()));
+
+/* ---------- Barra de herramientas ---------- */
+document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>{
+  tool=b.dataset.tool; document.querySelectorAll('[data-tool]').forEach(x=>x.classList.toggle('on',x===b));
+});
+function spawn(o){                       // nuevo elemento en el centro de la vista
+  const c=toW({x:cw/2,y:ch/2}), j=()=> (Math.random()-.5)*50;
+  const it={x:c.x+j(),y:c.y+j(),...o}; items.push(it); selected=it; draw();
+}
+document.getElementById('addP').onclick=()=>spawn({t:'p',col:curColor,txt:String(items.filter(i=>i.t==='p').length%11+1)});
+document.getElementById('addG').onclick=()=>spawn({t:'g',col:GK_COLOR,txt:'POR'});
+document.getElementById('addC').onclick=()=>spawn({t:'c'});
+document.getElementById('addB').onclick=()=>spawn({t:'b'});
+document.getElementById('addT').onclick=()=>{ const v=prompt('Texto:','Texto'); if(v&&v.trim()) spawn({t:'t',txt:v.trim().slice(0,20)}); };
+
+// Paleta de petos
+const pal=document.getElementById('pal');
+Object.entries(COLORS).forEach(([n,c])=>{
+  const b=document.createElement('button'); b.className='col'+(c===curColor?' on':''); b.style.background=c; b.title=n;
+  b.onclick=()=>{
+    curColor=c; pal.querySelectorAll('.col').forEach(x=>x.classList.toggle('on',x===b));
+    if(selected && (selected.t==='p'||selected.t==='g')){ selected.col=c; draw(); }  // cambia el peto del seleccionado
+  };
+  pal.appendChild(b);
+});
+
+const dashB=document.getElementById('dash');
+dashB.onclick=()=>{ dashed=!dashed; dashB.textContent=dashed?'┅ Discontinua':'━ Continua'; };
+document.getElementById('undo').onclick=()=>{ strokes.pop(); draw(); };
+document.getElementById('clear').onclick=()=>{ if(confirm('¿Limpiar toda la pizarra?')){ items=[]; strokes=[]; selected=null; draw(); } };
+document.getElementById('zi').onclick=()=>zoom(1.25);
+document.getElementById('zo').onclick=()=>zoom(.8);
+document.getElementById('fit').onclick=fit;
+
+/* ===== Biblioteca de tácticas (localStorage) + PNG + copia de seguridad ===== */
+const KEY='pizarra.tacticas', AUTO='pizarra.auto', $=id=>document.getElementById(id);
+let tid=null, tname='', timer=null;                       // táctica actual
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const getLib=()=>{try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return []}};
+const setLib=a=>{try{localStorage.setItem(KEY,JSON.stringify(a));return true}catch(e){toast('No se pudo guardar: almacenamiento lleno o bloqueado');return false}};
+const snap=()=>JSON.parse(JSON.stringify({items,strokes}));
+function toast(m){const d=$('tst');d.textContent=m;d.style.opacity=1;clearTimeout(d._t);d._t=setTimeout(()=>d.style.opacity=0,2200);}
+function label(){$('btnLib').textContent='📁 '+(tname?tname.slice(0,16):'Tácticas');}
+function render(sc){                                      // dibuja el campo completo en un canvas aparte
+  const c=document.createElement('canvas'); c.width=W*sc; c.height=H*sc;
+  const old=ctx, sel=selected; ctx=c.getContext('2d'); selected=null;
+  ctx.setTransform(sc,0,0,sc,0,0); drawPitch(); strokes.forEach(drawStroke); items.forEach(drawItem);
+  ctx=old; selected=sel; return c;
+}
+function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);}
+
+// Autoguardado de la pizarra en curso (se recupera al reabrir la app)
+const _draw=draw;
+draw=function(){ _draw(); if(!mode){ clearTimeout(timer); timer=setTimeout(()=>{ try{localStorage.setItem(AUTO,JSON.stringify({...snap(),tid,tname}))}catch(e){} },500); } };
+
+function save(asNew){
+  const a=getLib(); let t=a.find(x=>x.id===tid);
+  if(!t||asNew){
+    const n=prompt('Nombre de la táctica:',tname||'Táctica '+(a.length+1));
+    if(!n||!n.trim()) return;
+    t={id:Date.now().toString(36)}; a.unshift(t); tname=n.trim().slice(0,40); tid=t.id;
+  }
+  Object.assign(t,{name:tname,date:Date.now(),data:snap(),thumb:render(.25).toDataURL('image/jpeg',.6)});
+  if(setLib(a)){ toast('Guardada ✓'); label(); draw(); if($('modal').style.display==='flex') list(); }
+}
+function list(){
+  const a=getLib();
+  $('tlist').innerHTML=a.length?a.map(t=>`<div class="card${t.id===tid?' cur':''}"><img src="${t.thumb||''}" alt=""><div class="nm">${esc(t.name)}</div><div class="dt">${new Date(t.date).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'})}</div><div class="ac"><button data-a="open" data-id="${t.id}">Abrir</button><button data-a="ren" data-id="${t.id}">✎</button><button data-a="dup" data-id="${t.id}">⧉</button><button data-a="del" data-id="${t.id}">🗑</button></div></div>`).join(''):'<p class="empty">Aún no hay tácticas guardadas.<br>Pulsa 💾 Guardar para añadir la actual.</p>';
+}
+const open_=()=>{list();$('modal').style.display='flex';}, close_=()=>{$('modal').style.display='none';};
+$('btnLib').onclick=open_; $('mX').onclick=close_;
+$('modal').addEventListener('pointerdown',e=>{if(e.target===$('modal'))close_();});
+$('btnSave').onclick=()=>save(false); $('mAs').onclick=()=>save(true);
+$('mNew').onclick=()=>{
+  if((items.length||strokes.length) && !confirm('¿Empezar una pizarra nueva? Lo que no hayas guardado se perderá.')) return;
+  items=[];strokes=[];selected=null;tid=null;tname='';label();close_();draw();
+};
+$('mPng').onclick=()=>render(1.5).toBlob(b=>b&&download(b,(tname||'tactica')+'.png'),'image/png');
+$('mExp').onclick=()=>download(new Blob([JSON.stringify({app:'pizarra',v:1,tacticas:getLib()})],{type:'application/json'}),'tacticas-pizarra.json');
+$('mImp').onclick=()=>$('mFile').click();
+$('mFile').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return; const r=new FileReader();
+  r.onload=()=>{ try{
+    const j=JSON.parse(r.result), arr=j.tacticas||(Array.isArray(j)?j:[j]), a=getLib();
+    const ok=arr.filter(t=>t&&t.data&&Array.isArray(t.data.items)&&Array.isArray(t.data.strokes));
+    ok.forEach(t=>{ if(a.some(x=>x.id===t.id)) t.id=Date.now().toString(36)+Math.random().toString(36).slice(2,5); a.unshift(t); });
+    if(setLib(a)){ list(); toast(ok.length+' táctica(s) importada(s)'); }
+  }catch(err){ toast('Archivo no válido'); } e.target.value=''; };
+  r.readAsText(f);
+};
+$('tlist').onclick=e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  const a=getLib(), t=a.find(x=>x.id===b.dataset.id); if(!t) return;
+  if(b.dataset.a==='open'){ items=t.data.items;strokes=t.data.strokes;selected=null;tid=t.id;tname=t.name;label();close_();draw(); }
+  else if(b.dataset.a==='ren'){ const n=prompt('Nuevo nombre:',t.name); if(n&&n.trim()){ t.name=n.trim().slice(0,40); if(t.id===tid){tname=t.name;label();} setLib(a); list(); } }
+  else if(b.dataset.a==='dup'){ a.unshift({...t,id:Date.now().toString(36),name:t.name+' (copia)',date:Date.now()}); setLib(a); list(); }
+  else if(b.dataset.a==='del'){ if(confirm('¿Borrar "'+t.name+'"?')){ setLib(a.filter(x=>x!==t&&x.id!==t.id)); if(t.id===tid){tid=null;tname='';label();} list(); } }
+};
+// Recuperar la última pizarra en curso
+try{ const au=JSON.parse(localStorage.getItem(AUTO)); if(au&&au.items){ items=au.items;strokes=au.strokes||[];tid=au.tid||null;tname=au.tname||''; label(); } }catch(e){}
+
+resize();
+if('serviceWorker' in navigator && location.protocol.indexOf('http')===0) window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+</script>
+</body>
+</html>
